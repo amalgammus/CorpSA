@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    {% include 'includes/_head.html' %}
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Анализ данных организаций</h1>
+
+        {% include 'includes/_filter_card.html' %}
+        {% include 'includes/_data_table.html' %}
+        {% include 'includes/_empty_state.html' %}
+    </div>
+
+    {% include 'includes/_scripts.html' %}
+</body>
+</html>

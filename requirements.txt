@@ -1,0 +1,9 @@
+Flask
+psycopg2
+pandas
+python-dotenv
+plotly
+python-dateutil
+dotenv
+openpyxl
+xlsxwriter
