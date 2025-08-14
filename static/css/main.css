@@ -114,3 +114,52 @@ body {
 .select2-container {
     z-index: 1060 !important; /* Чтобы dropdown был поверх других элементов */
 }
+
+/* Стили для графиков */
+#driversChart, #ordersChart {
+    width: 100%;
+}
+
+/* Стили для кнопки переключения вида */
+#toggleViewBtn {
+    min-width: 130px;
+    transition: all 0.3s ease;
+}
+
+#toggleViewBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+    #driversChart, #ordersChart {
+        height: 250px !important;
+    }
+
+    #toggleViewBtn {
+        order: -1; /* Перемещаем кнопку в начало на мобильных */
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+
+/* Улучшаем отображение графиков */
+.plot-container {
+    width: 100% !important;
+}
+
+.js-plotly-plot .plotly .modebar {
+    left: 50px;
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+    #driversChart, #ordersChart {
+        height: 250px !important;
+    }
+
+    .js-plotly-plot .plotly .modebar {
+        display: none;
+    }
+}

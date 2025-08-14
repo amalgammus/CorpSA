@@ -2,6 +2,9 @@ $(document).ready(function() {
     // Состояние фильтра организаций
     let corpFilterEnabled = true;
     let allOrganizations = [];
+    let currentData = [];
+    let currentView = 'table'; // 'table' или 'chart'
+    let plotlyInitialized = false;
 
     // Инициализация datepicker
     flatpickr(".datepicker", {
@@ -14,6 +17,29 @@ $(document).ready(function() {
     // Загрузка списка организаций
     loadOrganizations();
 
+    // Обработчик кнопки переключения вида
+    $("#toggleViewBtn").click(function() {
+        if (currentView === 'table') {
+            currentView = 'chart';
+            $(this).html('<i class="bi bi-table"></i> Таблица');
+            $("#tableContainer").hide();
+            $("#chartContainer").show();
+
+            // Проверяем инициализацию Plotly
+            if (typeof Plotly === 'undefined') {
+                showAlert("Библиотека графиков не загрузилась. Попробуйте обновить страницу.", "warning");
+                return;
+            }
+
+            renderCharts(currentData);
+        } else {
+            currentView = 'table';
+            $(this).html('<i class="bi bi-bar-chart"></i> Графики');
+            $("#chartContainer").hide();
+            $("#tableContainer").show();
+        }
+    });
+
     // Обработчик кнопки экспорта
     $("#exportBtn").click(function() {
         if (!validateForm()) return;
@@ -25,13 +51,11 @@ $(document).ready(function() {
             monthly: $("#monthly").is(":checked")
         };
 
-        // Проверка периода
         if (new Date(params.date_from) > new Date(params.date_to)) {
             showAlert("Дата 'с' не может быть позже даты 'по'", "warning");
             return;
         }
 
-        // Формируем URL для экспорта
         const queryString = new URLSearchParams(params).toString();
         window.location.href = `/api/export?${queryString}`;
     });
@@ -65,6 +89,75 @@ $(document).ready(function() {
             .fail(function(jqXHR) {
                 showAlert("Ошибка загрузки организаций", "danger");
             });
+    }
+
+    // Функция отрисовки графиков (обновлённая)
+    function renderCharts(data) {
+        if (!data || data.length === 0) {
+            showAlert("Нет данных для отображения графиков", "warning");
+            return;
+        }
+
+        const isMonthly = $("#monthly").is(":checked");
+
+        try {
+            // Подготовка данных
+            const xValues = data.map(item =>
+                isMonthly ? item.month_name : new Date(item.date)
+            );
+
+            // График водителей
+            Plotly.newPlot('driversChart', [{
+                x: xValues,
+                y: data.map(item => item.max_drivers),
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Водители',
+                marker: { color: '#0d6efd' },
+                line: { shape: 'spline' }
+            }], {
+                title: isMonthly ? 'Среднее количество водителей' : 'Максимальное количество водителей',
+                xaxis: {
+                    title: isMonthly ? 'Месяц' : 'Дата',
+                    type: isMonthly ? 'category' : 'date',
+                    tickformat: isMonthly ? '' : '%d.%m.%Y'
+                },
+                yaxis: { title: 'Количество' },
+                margin: { t: 40, b: 100, l: 50, r: 30 },
+                hovermode: 'x unified'
+            });
+
+            // График заказов
+            Plotly.newPlot('ordersChart', [{
+                x: xValues,
+                y: data.map(item => item.total_orders),
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Заказы',
+                marker: { color: '#198754' },
+                line: { shape: 'spline' }
+            }], {
+                title: 'Количество выполненных заказов',
+                xaxis: {
+                    title: isMonthly ? 'Месяц' : 'Дата',
+                    type: isMonthly ? 'category' : 'date',
+                    tickformat: isMonthly ? '' : '%d.%m.%Y'
+                },
+                yaxis: { title: 'Количество' },
+                margin: { t: 40, b: 100, l: 50, r: 30 },
+                hovermode: 'x unified'
+            });
+
+            // Обработчик изменения размера
+            $(window).on('resize', function() {
+                Plotly.Plots.resize('driversChart');
+                Plotly.Plots.resize('ordersChart');
+            });
+
+        } catch (error) {
+            console.error("Ошибка при отрисовке графиков:", error);
+            showAlert("Ошибка при отрисовке графиков", "danger");
+        }
     }
 
     // Инициализация поиска
@@ -148,18 +241,29 @@ $(document).ready(function() {
             }
         });
 
-        $.get("/api/data", params)
+           $.get("/api/data", params)
             .done(function(data) {
+                currentData = data;
+
                 if (!data || data.length === 0) {
                     showAlert("Нет данных для отображения", "warning");
                     $("#emptyState").show();
                     $("#tableContainer").hide();
+                    $("#chartContainer").hide();
                     return;
                 }
 
                 $("#emptyState").hide();
-                $("#tableContainer").show();
-                updateTable(data);
+
+                if (currentView === 'table') {
+                    $("#tableContainer").show();
+                    $("#chartContainer").hide();
+                    updateTable(data);
+                } else {
+                    $("#tableContainer").hide();
+                    $("#chartContainer").show();
+                    renderCharts(data);
+                }
             })
             .fail(function(jqXHR, textStatus, errorThrown) {
                 console.error("Ошибка запроса:", textStatus, errorThrown, jqXHR.responseText);
