@@ -32,14 +32,19 @@
                     <div class="col-md-12 mt-3 d-flex justify-content-end">
                         <div class="col-md-12 mt-3">
                             <div class="d-flex flex-wrap justify-content-end gap-2">
-                                <button type="button" id="toggleViewBtn" class="btn btn-outline-secondary">
-                                    <i class="bi bi-bar-chart"></i> Графики
-                                </button>
-                                <button type="submit" class="btn btn-primary flex-grow-1 flex-md-grow-0" id="applyBtn">
+                                <div class="btn-group" role="group">
+                                    <button type="button" id="tableViewBtn" class="btn btn-outline-primary active">
+                                        <i class="bi bi-table"></i> Таблица
+                                    </button>
+                                    <button type="button" id="chartViewBtn" class="btn btn-outline-primary">
+                                        <i class="bi bi-bar-chart-line"></i> Графики
+                                    </button>
+                                </div>
+                                <button type="submit" class="btn btn-primary" id="applyBtn">
                                     Показать данные
                                 </button>
-                                <button type="button" class="btn btn-success flex-grow-1 flex-md-grow-0" id="exportBtn">
-                                    <i class="bi bi-file-excel"></i> Экспорт в Excel
+                                <button type="button" class="btn btn-success" id="exportBtn">
+                                    <i class="bi bi-file-excel"></i> Экспорт
                                 </button>
                             </div>
                         </div>

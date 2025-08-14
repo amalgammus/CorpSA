@@ -1,48 +1,142 @@
 $(document).ready(function() {
-    // Состояние фильтра организаций
-    let corpFilterEnabled = true;
-    let allOrganizations = [];
-    let currentData = [];
-    let currentView = 'table'; // 'table' или 'chart'
-    let plotlyInitialized = false;
+    // Состояние приложения
+    const appState = {
+        corpFilterEnabled: true,
+        allOrganizations: [],
+        currentData: null,
+        currentView: 'table',
+        isLoading: false,
+        plotlyLoaded: false
+    };
 
-    // Инициализация datepicker
-    flatpickr(".datepicker", {
-        dateFormat: "Y-m-d",
-        locale: "ru",
-        allowInput: true,
-        maxDate: "today"
-    });
+    // Инициализация
+    function init() {
+        initControls();
+        initPlotly();
+        loadOrganizations();
+        showEmptyState();
+    }
 
-    // Загрузка списка организаций
-    loadOrganizations();
+    // Инициализация элементов управления
+    function initControls() {
+        // Datepicker
+        flatpickr(".datepicker", {
+            dateFormat: "Y-m-d",
+            locale: "ru",
+            allowInput: true,
+            maxDate: "today"
+        });
 
-    // Обработчик кнопки переключения вида
-    $("#toggleViewBtn").click(function() {
-        if (currentView === 'table') {
-            currentView = 'chart';
-            $(this).html('<i class="bi bi-table"></i> Таблица');
-            $("#tableContainer").hide();
-            $("#chartContainer").show();
+        // Переключатель представлений
+        $("#tableViewBtn").click(function(e) {
+            e.preventDefault();
+            if (appState.currentData) {
+                switchView('table');
+                $(this).blur(); // Убираем фокус
+            }
+        });
 
-            // Проверяем инициализацию Plotly
-            if (typeof Plotly === 'undefined') {
-                showAlert("Библиотека графиков не загрузилась. Попробуйте обновить страницу.", "warning");
+        $("#chartViewBtn").click(function(e) {
+            e.preventDefault();
+            if (appState.currentData) {
+                switchView('chart');
+                $(this).blur(); // Убираем фокус
+            } else {
+                showAlert("Сначала загрузите данные", "warning");
+            }
+        });
+
+        // Обработчик формы
+        $("#filterForm").on("submit", function(e) {
+            e.preventDefault();
+            loadData();
+        });
+
+        // Обработчик кнопки экспорта
+        $("#exportBtn").click(function() {
+            if (!validateForm()) return;
+
+            const params = {
+                organization: $("#organization").val(),
+                date_from: $("#dateFrom").val(),
+                date_to: $("#dateTo").val(),
+                monthly: $("#monthly").is(":checked")
+            };
+
+            if (new Date(params.date_from) > new Date(params.date_to)) {
+                showAlert("Дата 'с' не может быть позже даты 'по'", "warning");
                 return;
             }
 
-            renderCharts(currentData);
-        } else {
-            currentView = 'table';
-            $(this).html('<i class="bi bi-bar-chart"></i> Графики');
-            $("#chartContainer").hide();
-            $("#tableContainer").show();
-        }
-    });
+            const queryString = new URLSearchParams(params).toString();
+            window.location.href = `/api/export?${queryString}`;
+        });
 
-    // Обработчик кнопки экспорта
-    $("#exportBtn").click(function() {
-        if (!validateForm()) return;
+        // Переключение фильтра организаций
+        $("#toggleCorpFilter").change(function() {
+            appState.corpFilterEnabled = $(this).is(":checked");
+            loadOrganizations();
+        });
+
+        // Автоматическая загрузка при изменении группировки
+        $("#monthly").change(function() {
+            if ($("#organization").val() && $("#dateFrom").val() && $("#dateTo").val()) {
+                loadData();
+            }
+        });
+    }
+
+    // Инициализация Plotly
+    function initPlotly() {
+        if (typeof Plotly === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.plot.ly/plotly-2.24.1.min.js';
+            script.onload = function() {
+                appState.plotlyLoaded = true;
+            };
+            script.onerror = function() {
+                console.error("Не удалось загрузить Plotly");
+                $("#chartViewBtn").prop('disabled', true);
+            };
+            document.head.appendChild(script);
+        } else {
+            appState.plotlyLoaded = true;
+        }
+    }
+
+    // Переключение представлений
+    function switchView(view) {
+        if (!appState.currentData) {
+            showEmptyState();
+            return;
+        }
+
+        appState.currentView = view;
+        $("#tableViewBtn").toggleClass("active", view === 'table');
+        $("#chartViewBtn").toggleClass("active", view === 'chart');
+
+        if (view === 'table') {
+            $("#tableContainer").show();
+            $("#chartContainer").hide();
+        } else {
+            $("#tableContainer").hide();
+            $("#chartContainer").show();
+            renderCharts(appState.currentData);
+        }
+    }
+
+    // Загрузка данных
+    function loadData() {
+        if (appState.isLoading) return;
+
+        if (!validateForm()) {
+            showEmptyState();
+            return;
+        }
+
+        appState.isLoading = true;
+        // Показываем легкую индикацию загрузки
+        $("#applyBtn").prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Загрузка...');
 
         const params = {
             organization: $("#organization").val(),
@@ -51,38 +145,110 @@ $(document).ready(function() {
             monthly: $("#monthly").is(":checked")
         };
 
-        if (new Date(params.date_from) > new Date(params.date_to)) {
-            showAlert("Дата 'с' не может быть позже даты 'по'", "warning");
-            return;
+        $.get("/api/data", params)
+            .done(function(data) {
+                appState.currentData = data;
+                if (data && data.length > 0) {
+                    showData();
+                    updateCurrentView();
+                } else {
+                    showAlert("Нет данных для отображения", "warning");
+                    showEmptyState();
+                }
+            })
+            .fail(function(jqXHR) {
+                showAlert(jqXHR.responseJSON?.error || "Ошибка загрузки", "danger");
+                showEmptyState();
+            })
+            .always(function() {
+                appState.isLoading = false;
+                $("#applyBtn").prop('disabled', false).text('Показать данные');
+            });
+    }
+
+    // Показать данные
+    function showData() {
+        $("#emptyState").hide();
+        $("#dataContainers").show();
+        updateCurrentView();
+    }
+
+    // Обновить текущее представление
+    function updateCurrentView() {
+        if (!appState.currentData) return;
+
+        if (appState.currentView === 'table') {
+            $("#tableContainer").show();
+            $("#chartContainer").hide();
+            updateTable(appState.currentData);
+        } else {
+            $("#tableContainer").hide();
+            $("#chartContainer").show();
+            renderCharts(appState.currentData);
         }
+    }
 
-        const queryString = new URLSearchParams(params).toString();
-        window.location.href = `/api/export?${queryString}`;
-    });
+    // Переключение представлений
+    function switchView(view) {
+        if (!appState.currentData) return;
 
-    // Обработка формы фильтрации
-    $("#filterForm").on("submit", function(e) {
-        e.preventDefault();
-        if (validateForm()) {
-            loadData();
+        appState.currentView = view;
+        $("#tableViewBtn").toggleClass("active", view === 'table');
+        $("#chartViewBtn").toggleClass("active", view === 'chart');
+        updateCurrentView();
+    }
+
+    // Пустое состояние
+    function showEmptyState() {
+        appState.currentData = null;
+        $("#emptyState").show();
+        $("#dataContainers").hide();
+
+        // Очищаем данные
+        $("#dataTable tbody").empty();
+        if (typeof Plotly !== 'undefined') {
+            Plotly.purge('driversChart');
+            Plotly.purge('ordersChart');
         }
-    });
+    }
 
-    // Переключение фильтра организаций
-    $("#toggleCorpFilter").change(function() {
-        corpFilterEnabled = $(this).is(":checked");
-        loadOrganizations();
-    });
+    // Показать/скрыть индикатор загрузки
+    function showLoading(show) {
+        if (show) {
+            $("body").append(`
+                <div class="loading-indicator">
+                    <div class="spinner-border loading-spinner text-primary" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                </div>
+            `);
+        } else {
+            $(".loading-indicator").remove();
+        }
+    }
+
+    // Функция валидации формы
+    function validateForm() {
+        if (!$("#organization").val()) {
+            showAlert("Выберите организацию", "warning");
+            return false;
+        }
+        if (!$("#dateFrom").val() || !$("#dateTo").val()) {
+            showAlert("Выберите период", "warning");
+            return false;
+        }
+        return true;
+    }
 
     // Функция загрузки организаций
     function loadOrganizations() {
         const select = $("#organization");
         select.prop('disabled', true).html('<option value="">Загрузка...</option>');
 
-        $.get("/api/organizations", { filter_corp: corpFilterEnabled })
+        $.get("/api/organizations", { filter_corp: appState.corpFilterEnabled })
             .always(() => select.prop('disabled', false))
             .done(function(data) {
-                allOrganizations = data;
+                appState.allOrganizations = data;
                 updateOrganizationList(data);
                 initSearch();
             })
@@ -91,8 +257,94 @@ $(document).ready(function() {
             });
     }
 
-    // Функция отрисовки графиков (обновлённая)
+    // Обновление списка организаций
+    function updateOrganizationList(organizations) {
+        const select = $("#organization");
+        select.empty();
+
+        if (organizations.length === 0) {
+            select.append('<option value="" disabled>Нет организаций</option>');
+            return;
+        }
+
+        select.append('<option value="" selected disabled>Выберите организацию</option>');
+        organizations.forEach(org => {
+            select.append(`<option value="${org}">${org}</option>`);
+        });
+
+        if (select.data('select2')) {
+            select.select2('destroy');
+            initSearch();
+        }
+    }
+
+    // Инициализация поиска Select2
+    function initSearch() {
+        $("#organization").select2({
+            placeholder: "Выберите или начните вводить...",
+            language: "ru",
+            width: '100%',
+            minimumInputLength: 0,
+            dropdownAutoWidth: true,
+            data: appState.allOrganizations.map(org => ({ id: org, text: org })),
+            dropdownCssClass: "enhanced-dropdown"
+        });
+
+        $("#organization").on('select2:open', function() {
+            setTimeout(() => {
+                const searchField = document.querySelector('.select2-container--open .select2-search__field');
+                if (searchField) searchField.focus();
+            }, 50);
+        });
+    }
+
+    // Функция обновления таблицы
+    function updateTable(data) {
+        const tbody = $("#dataTable tbody");
+        tbody.empty();
+
+        const isMonthly = $("#monthly").is(":checked");
+
+        // Обновляем заголовки
+        $("#dataTable thead tr").html(isMonthly ? `
+            <th>Месяц</th>
+            <th>Организация</th>
+            <th>Среднее кол-во водителей</th>
+            <th>Выполнено заказов</th>
+        ` : `
+            <th>Дата</th>
+            <th>Организация</th>
+            <th>Макс. водителей</th>
+            <th>Выполнено заказов</th>
+        `);
+
+        data.forEach(item => {
+            const date = isMonthly
+                ? item.month_name || getRussianMonthName(new Date(item.date))
+                : new Date(item.date).toLocaleDateString('ru-RU');
+
+            const drivers = formatNumber(item.max_drivers);
+            const orders = formatNumber(item.total_orders);
+
+            tbody.append(`
+                <tr>
+                    <td>${date}</td>
+                    <td>${item.organization}</td>
+                    <td>${drivers}</td>
+                    <td>${orders}</td>
+                </tr>
+            `);
+        });
+    }
+
+    // Функция отрисовки графиков
     function renderCharts(data) {
+        if (!appState.plotlyLoaded) {
+            showAlert("Библиотека графиков не загрузилась", "warning");
+            switchView('table');
+            return;
+        }
+
         if (!data || data.length === 0) {
             showAlert("Нет данных для отображения графиков", "warning");
             return;
@@ -157,167 +409,11 @@ $(document).ready(function() {
         } catch (error) {
             console.error("Ошибка при отрисовке графиков:", error);
             showAlert("Ошибка при отрисовке графиков", "danger");
+            switchView('table');
         }
     }
 
-    // Инициализация поиска
-    function initSearch() {
-        $("#organization").select2({
-            placeholder: "Выберите или начните вводить...",
-            language: "ru",
-            width: '100%',
-            minimumInputLength: 0,
-            dropdownAutoWidth: true,
-            data: allOrganizations.map(org => ({ id: org, text: org })),
-            dropdownCssClass: "enhanced-dropdown"
-        });
-
-        // Добавляем обработчик открытия dropdown
-        $("#organization").on('select2:open', function() {
-            // Даем небольшой таймаут для гарантии инициализации dropdown
-            setTimeout(() => {
-                // Находим поле поиска и фокусируем его
-                const searchField = document.querySelector('.select2-container--open .select2-search__field');
-                if (searchField) {
-                    searchField.focus();
-                }
-            }, 50);
-        });
-    }
-
-    // Обновление списка организаций
-    function updateOrganizationList(organizations) {
-        const select = $("#organization");
-        select.empty();
-
-        if (organizations.length === 0) {
-            select.append('<option value="" disabled>Нет организаций</option>');
-            return;
-        }
-
-        select.append('<option value="" selected disabled>Выберите организацию</option>');
-        organizations.forEach(org => {
-            select.append(`<option value="${org}">${org}</option>`);
-        });
-
-        // Если Select2 уже инициализирован - обновляем данные
-        if ($("#organization").data('select2')) {
-            $("#organization").select2('destroy');
-            initSearch();
-        }
-    }
-
-    // Функция валидации формы
-    function validateForm() {
-        if (!$("#organization").val()) {
-            showAlert("Выберите организацию", "warning");
-            return false;
-        }
-        if (!$("#dateFrom").val() || !$("#dateTo").val()) {
-            showAlert("Выберите период", "warning");
-            return false;
-        }
-        return true;
-    }
-
-    // Функция загрузки данных
-    function loadData() {
-        const params = {
-            organization: $("#organization").val(),
-            date_from: $("#dateFrom").val(),
-            date_to: $("#dateTo").val(),
-            monthly: $("#monthly").is(":checked")
-        };
-
-        // Проверка периода
-        if (new Date(params.date_from) > new Date(params.date_to)) {
-            showAlert("Дата 'с' не может быть позже даты 'по'", "warning");
-            return;
-        }
-
-        $("#monthly").change(function() {
-            if ($("#organization").val() && $("#dateFrom").val() && $("#dateTo").val()) {
-                loadData();
-            }
-        });
-
-           $.get("/api/data", params)
-            .done(function(data) {
-                currentData = data;
-
-                if (!data || data.length === 0) {
-                    showAlert("Нет данных для отображения", "warning");
-                    $("#emptyState").show();
-                    $("#tableContainer").hide();
-                    $("#chartContainer").hide();
-                    return;
-                }
-
-                $("#emptyState").hide();
-
-                if (currentView === 'table') {
-                    $("#tableContainer").show();
-                    $("#chartContainer").hide();
-                    updateTable(data);
-                } else {
-                    $("#tableContainer").hide();
-                    $("#chartContainer").show();
-                    renderCharts(data);
-                }
-            })
-            .fail(function(jqXHR, textStatus, errorThrown) {
-                console.error("Ошибка запроса:", textStatus, errorThrown, jqXHR.responseText);
-                const errorMsg = jqXHR.responseJSON?.error || "Ошибка загрузки данных";
-                showAlert(errorMsg, "danger");
-            });
-    }
-
-    // Функция обновления таблицы
-    function updateTable(data) {
-        const tbody = $("#dataTable tbody");
-        tbody.empty();
-
-        const isMonthly = $("#monthly").is(":checked");
-
-        // Обновляем заголовки
-        if (isMonthly) {
-            $("#dataTable thead tr").html(`
-                <th>Месяц</th>
-                <th>Организация</th>
-                <th>Среднее кол-во водителей</th>
-                <th>Выполнено заказов</th>
-            `);
-        } else {
-            $("#dataTable thead tr").html(`
-                <th>Дата</th>
-                <th>Организация</th>
-                <th>Макс. водителей</th>
-                <th>Выполнено заказов</th>
-            `);
-        }
-
-        data.forEach(item => {
-            // Форматирование даты/месяца
-            const date = isMonthly
-                ? item.month_name || getRussianMonthName(new Date(item.date))
-                : new Date(item.date).toLocaleDateString('ru-RU');
-
-            // Форматирование числа водителей (без .0 для целых чисел)
-            const drivers = formatNumber(item.max_drivers);
-            const orders = formatNumber(item.total_orders);
-
-            tbody.append(`
-                <tr>
-                    <td>${date}</td>
-                    <td>${item.organization}</td>
-                    <td>${drivers}</td>
-                    <td>${orders}</td>
-                </tr>
-            `);
-        });
-    }
-
-    // Вспомогательная функция для русских названий месяцев
+    // Вспомогательные функции
     function getRussianMonthName(date) {
         const months = [
             'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -326,14 +422,12 @@ $(document).ready(function() {
         return months[date.getMonth()] + ' ' + date.getFullYear();
     }
 
-    // Форматирование чисел (убираем .0 для целых значений)
     function formatNumber(num) {
         if (!num && num !== 0) return '0';
         const fixedNum = Number(num).toFixed(1);
         return fixedNum.endsWith('.0') ? fixedNum.split('.')[0] : fixedNum;
     }
 
-    // Функция показа уведомлений
     function showAlert(message, type) {
         const alert = $(`
             <div class="alert alert-${type} alert-dismissible fade show"
@@ -349,4 +443,7 @@ $(document).ready(function() {
             alert.alert('close');
         }, 5000);
     }
+
+    // Запуск приложения
+    init();
 });
