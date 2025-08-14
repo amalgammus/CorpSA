@@ -40,8 +40,34 @@ def read_corp_filter():
 
 def sanitize_filename(filename):
     """Очищает имя файла от недопустимых символов"""
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.replace(" ", "_")
+    try:
+        # Транслитерация русских символов
+        translit_map = {
+            'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+            'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+            'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+            'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '',
+            'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+            'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'E',
+            'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
+            'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
+            'Ф': 'F', 'Х': 'H', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
+            'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+        }
+
+        filename = ''.join([translit_map.get(c, c) for c in filename])
+
+        # Удаление недопустимых символов
+        filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+        filename = re.sub(r'[^\w\-_. ]', '', filename)
+        filename = filename.replace(" ", "_")
+
+        # Ограничение длины
+        return filename[:100]
+
+    except (TypeError, AttributeError) as e:
+        app.logger.warning(f"Filename sanitization warning: {e}")
+        return "exported_data.xlsx"
 
 
 @app.route('/')
@@ -162,67 +188,122 @@ def export_data():
             """
             params = [org, parse(date_from).date(), parse(date_to).date()]
 
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                columns = [desc[0] for desc in cur.description]
-                data = [dict(zip(columns, row)) for row in cur.fetchall()]
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query, params)
+                    columns = [desc[0] for desc in cur.description]
+                    data = [dict(zip(columns, row)) for row in cur.fetchall()]
+            except psycopg2.Error as db_error:
+                app.logger.error(f"Database error during export: {db_error}")
+                return jsonify({'error': 'Ошибка базы данных'}), 500
 
             if not data:
                 return jsonify({'error': 'Нет данных для экспорта'}), 404
 
-            df = pd.DataFrame(data)
-            df['date'] = pd.to_datetime(df['date'])
+            try:
+                df = pd.DataFrame(data)
+                df['date'] = pd.to_datetime(df['date'])
+            except (ValueError, KeyError) as df_error:
+                app.logger.error(f"Data processing error: {df_error}")
+                return jsonify({'error': 'Ошибка обработки данных'}), 500
 
-            if monthly:
-                # Группировка по месяцам
-                months_ru = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-                             'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
-                df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
-                    'max_drivers': 'mean',
-                    'total_orders': 'sum'
-                }).reset_index()
-                df['Период'] = df['date'].dt.month.apply(lambda x: months_ru[x - 1]) + ' ' + df['date'].dt.year.astype(
-                    str)
-                df_export = df[['Период', 'max_drivers', 'total_orders']].rename(columns={
-                    'max_drivers': 'Среднее количество водителей',
-                    'total_orders': 'Всего заказов'
-                })
-                df_export['Организация'] = org
-                df_export = df_export[['Период', 'Организация', 'Среднее количество водителей', 'Всего заказов']]
-                df_export['Среднее количество водителей'] = df_export['Среднее количество водителей'].round(1)
-            else:
-                # Дневные данные
-                df_export = df.rename(columns={
-                    'date': 'Дата',
-                    'organization': 'Организация',
-                    'max_drivers': 'Максимальное количество водителей',
-                    'total_orders': 'Всего заказов'
-                })
-                df_export['Дата'] = df_export['Дата'].dt.strftime('%d.%m.%Y')
-
-            # Создаем Excel файл с явным указанием параметров
+            # Создаем Excel файл в памяти
             output = BytesIO()
-            with pd.ExcelWriter(
-                    output,
-                    engine='openpyxl',
-                    mode='w'
-            ) as writer:
-                df_export.to_excel(writer, sheet_name='Данные', index=False)
 
-            output.seek(0)
+            try:
+                from openpyxl import Workbook
+                from openpyxl.utils.dataframe import dataframe_to_rows
+                from openpyxl.styles import Font, Alignment
 
-            # Формируем имя файла
-            filename = sanitize_filename(f"export_{org}_{date_from}_{date_to}.xlsx")
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Данные"
 
-            # Отправляем файл
-            response = make_response(output.getvalue())
-            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-            return response
+                if monthly:
+                    months_ru = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                                 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+                    try:
+                        df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
+                            'max_drivers': 'mean',
+                            'total_orders': 'sum'
+                        }).reset_index()
+                    except Exception as group_error:
+                        app.logger.error(f"Grouping error: {group_error}")
+                        return jsonify({'error': 'Ошибка группировки данных'}), 500
+
+                    headers = ["Период", "Организация", "Среднее количество водителей", "Всего заказов"]
+                    ws.append(headers)
+
+                    for _, row in df.iterrows():
+                        try:
+                            month_name = months_ru[row['date'].month - 1] + ' ' + str(row['date'].year)
+                            ws.append([
+                                month_name,
+                                org,
+                                round(float(row['max_drivers']), 1),
+                                int(row['total_orders'])
+                            ])
+                        except (ValueError, IndexError) as row_error:
+                            app.logger.error(f"Row processing error: {row_error}")
+                            continue
+
+                else:
+                    headers = ["Дата", "Организация", "Максимальное количество водителей", "Всего заказов"]
+                    ws.append(headers)
+
+                    for _, row in df.iterrows():
+                        try:
+                            ws.append([
+                                row['date'].strftime('%d.%m.%Y'),
+                                row['organization'],
+                                float(row['max_drivers']),
+                                int(row['total_orders'])
+                            ])
+                        except (ValueError, KeyError) as row_error:
+                            app.logger.error(f"Row processing error: {row_error}")
+                            continue
+
+                # Форматирование
+                bold_font = Font(bold=True)
+                for cell in ws[1]:
+                    cell.font = bold_font
+                    cell.alignment = Alignment(horizontal='center')
+
+                # Автоподбор ширины колонок
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            cell_value = str(cell.value) if cell.value is not None else ""
+                            if len(cell_value) > max_length:
+                                max_length = len(cell_value)
+                        except Exception as cell_error:
+                            app.logger.debug(f"Cell processing warning: {cell_error}")
+                            continue
+                    adjusted_width = (max_length + 2) * 1.2
+                    ws.column_dimensions[column_letter].width = adjusted_width
+
+                wb.save(output)
+                output.seek(0)
+
+            except Exception as excel_error:
+                app.logger.error(f"Excel generation error: {excel_error}")
+                return jsonify({'error': 'Ошибка создания Excel файла'}), 500
+
+            try:
+                filename = sanitize_filename(f"export_{org}_{date_from}_{date_to}.xlsx")
+                response = make_response(output.getvalue())
+                response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+            except Exception as response_error:
+                app.logger.error(f"Response creation error: {response_error}")
+                return jsonify({'error': 'Ошибка формирования ответа'}), 500
 
     except Exception as e:
-        app.logger.error(f"Ошибка экспорта: {str(e)}")
-        return jsonify({'error': 'Ошибка сервера при экспорте'}), 500
+        app.logger.error(f"Unexpected export error: {e}", exc_info=True)
+        return jsonify({'error': 'Неожиданная ошибка при экспорте'}), 500
 
 
 if __name__ == '__main__':

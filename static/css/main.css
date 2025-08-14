@@ -1,116 +1,254 @@
+/* ===== Base Styles ===== */
 body {
-    padding: 20px;
-    background-color: #f5f5f5;
+  padding: 20px;
+  background-color: #f5f5f5;
 }
 
 .card {
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
-    border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  border: none;
 }
 
+/* ===== Table Styles ===== */
 #dataTable td:nth-child(3),
 #dataTable td:nth-child(4) {
-    text-align: right;
-    font-family: monospace;
+  text-align: right;
+  font-family: monospace;
 }
 
+/* ===== Card Components ===== */
 .filter-card {
-            background: white;
-            padding: 20px;
+  background: white;
+  padding: 20px;
 }
 
 .empty-state {
-    text-align: center;
-    padding: 40px;
-    color: #6c757d;
+  text-align: center;
+  padding: 40px;
+  color: #6c757d;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  margin: 20px 0;
 }
 
+.empty-state i {
+  font-size: 3rem;
+  color: #6c757d;
+  margin-bottom: 15px;
+}
+
+.empty-state h4 {
+  color: #495057;
+  margin-bottom: 10px;
+}
+
+.empty-state p {
+  color: #6c757d;
+  font-size: 1.1rem;
+}
+
+/* ===== Form Elements ===== */
 .form-label {
-    font-weight: 500;
-}
-
-.filter-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-#applyBtn {
-    min-width: 150px;
-}
-
-#exportBtn {
-    min-width: 180px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.bi-file-excel {
-    font-size: 1.1em;
-}
-
-#applyBtn, #exportBtn {
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transition: all 0.3s ease;
-}
-
-#applyBtn:hover, #exportBtn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-
-#toggleCorpFilter {
-    margin-left: 0.5rem;
+  font-weight: 500;
 }
 
 .form-check-label {
-    user-select: none;
+  user-select: none;
 }
 
-/* Стили для Select2 */
-.select2-container--default .select2-selection--single {
-    height: 38px;
-    border: 1px solid #ced4da;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-    line-height: 36px;
-}
-
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 36px;
-}
-
-/* Стили для улучшенного dropdown */
-.enhanced-dropdown .select2-search__field {
-    width: 100% !important;
-    padding: 8px 12px !important;
-}
-
-.select2-container--default .select2-search--dropdown .select2-search__field {
-    border: 1px solid #ced4da !important;
-    margin: 4px 0;
-}
-
-.select2-container--default .select2-results__option--highlighted[aria-selected] {
-    background-color: #0d6efd !important;
-}
-
-/* Улучшаем внешний вид select */
 .enhanced-select {
-    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .enhanced-select:focus {
-    border-color: #86b7fe;
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-/* Делаем dropdown шире */
+/* ===== Button Styles ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  transition: all 0.2s ease;
+}
+
+#applyBtn, #exportBtn {
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+
+#applyBtn {
+  min-width: 150px;
+}
+
+#exportBtn {
+  min-width: 180px;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+}
+
+#applyBtn:hover,
+#exportBtn:hover,
+#toggleViewBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+#applyBtn .spinner-border {
+  margin-right: 8px;
+  vertical-align: text-top;
+}
+
+.btn-group .btn {
+  min-width: 120px;
+}
+
+.btn-group .btn.active {
+  background-color: #0d6efd;
+  color: white;
+  border-color: #0d6efd;
+}
+
+.btn-group .btn:not(.active):hover {
+  background-color: #f8f9fa;
+  color: #ccccde;
+}
+
+.btn-group .btn:focus {
+  box-shadow: none;
+  outline: none;
+}
+
+.btn-group .btn i.bi {
+  margin-right: 6px;
+}
+
+/* ===== Select2 Overrides ===== */
+.select2-container--default .select2-selection--single {
+  height: 38px;
+  border: 1px solid #ced4da;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  line-height: 36px;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 36px;
+}
+
 .select2-container {
-    z-index: 1060 !important; /* Чтобы dropdown был поверх других элементов */
+  z-index: 1060 !important;
+}
+
+.enhanced-dropdown .select2-search__field {
+  width: 100% !important;
+  padding: 8px 12px !important;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+  border: 1px solid #ced4da !important;
+  margin: 4px 0;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+  background-color: #0d6efd !important;
+}
+
+/* ===== Chart Containers ===== */
+#driversChart,
+#ordersChart {
+  width: 100%;
+  height: 300px;
+}
+
+.plot-container {
+  width: 100% !important;
+}
+
+.js-plotly-plot .plotly .modebar {
+  left: 50px;
+}
+
+/* ===== Layout Helpers ===== */
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+#dataContainers {
+  display: none;
+}
+
+body.has-data #emptyState {
+  display: none;
+}
+
+body.has-data #dataContainers {
+  display: block;
+}
+
+/* ===== Loading States ===== */
+.loading-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.7);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loading-spinner {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* ===== Icons ===== */
+.bi-file-excel {
+  font-size: 1.1em;
+}
+
+#exportBtn .bi {
+  font-size: 1rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* ===== Toggle Elements ===== */
+#toggleCorpFilter {
+  margin-left: 0.5rem;
+}
+
+#toggleViewBtn {
+  min-width: 130px;
+  transition: all 0.3s ease;
+}
+
+/* ===== Responsive Adjustments ===== */
+@media (max-width: 768px) {
+  #driversChart,
+  #ordersChart {
+    height: 250px !important;
+  }
+
+  #toggleViewBtn {
+    order: -1;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .js-plotly-plot .plotly .modebar {
+    display: none;
+  }
 }

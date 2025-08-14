@@ -8,8 +8,15 @@
         <h1 class="text-center mb-4">Анализ данных организаций</h1>
 
         {% include 'includes/_filter_card.html' %}
-        {% include 'includes/_data_table.html' %}
+
+        <!-- Empty state -->
         {% include 'includes/_empty_state.html' %}
+
+        <!-- Контейнеры данных -->
+        <div id="dataContainers" style="display: none;">
+            {% include 'includes/_data_table.html' %}
+            {% include 'includes/_chart_container.html' %}
+        </div>
     </div>
 
     {% include 'includes/_scripts.html' %}
