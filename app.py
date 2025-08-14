@@ -26,6 +26,18 @@ def db_connection():
             conn.close()
 
 
+CORP_FILTER_PATH = 'corp.txt'
+corp_filter_enabled = True
+
+
+def read_corp_filter():
+    try:
+        with open(CORP_FILTER_PATH, 'r') as f:
+            return [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        return []
+
+
 def sanitize_filename(filename):
     """Очищает имя файла от недопустимых символов"""
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -40,13 +52,29 @@ def dashboard():
 @app.route('/api/organizations')
 def get_organizations():
     try:
+        filter_corp = request.args.get('filter_corp', 'true') == 'true'
+        corp_prefixes = read_corp_filter() if filter_corp else []
+
         with db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT DISTINCT organization FROM organization_daily_stats ORDER BY organization")
-                return jsonify([row[0] for row in cur.fetchall()])
+                organizations = [row[0] for row in cur.fetchall()]
+
+                if filter_corp and corp_prefixes:
+                    organizations = [org for org in organizations
+                                     if any(org.startswith(prefix) for prefix in corp_prefixes)]
+
+                return jsonify(organizations)
     except Exception as e:
         app.logger.error(f"Ошибка при получении организаций: {e}")
         return jsonify([])
+
+
+@app.route('/api/toggle-corp-filter', methods=['POST'])
+def toggle_corp_filter():
+    global corp_filter_enabled
+    corp_filter_enabled = not corp_filter_enabled
+    return jsonify({'status': 'success', 'filter_enabled': corp_filter_enabled})
 
 
 @app.route('/api/data')
@@ -149,29 +177,19 @@ def export_data():
                 # Группировка по месяцам
                 months_ru = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
                              'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
-
-                try:
-                    df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
-                        'max_drivers': 'mean',
-                        'total_orders': 'sum'
-                    }).reset_index()
-
-                    df['Период'] = df['date'].dt.month.apply(lambda x: months_ru[x - 1]) + ' ' + df[
-                        'date'].dt.year.astype(str)
-                    df_export = df[['Период', 'max_drivers', 'total_orders']].rename(columns={
-                        'max_drivers': 'Среднее количество водителей',
-                        'total_orders': 'Всего заказов'
-                    })
-
-                    df_export['Организация'] = org
-
-                    # Переупорядочиваем столбцы
-                    df_export = df_export[['Период', 'Организация', 'Среднее количество водителей', 'Всего заказов']]
-
-                    df_export['Среднее количество водителей'] = df_export['Среднее количество водителей'].round(1)
-                except Exception as e:
-                    app.logger.error(f"Ошибка группировки по месяцам: {str(e)}")
-                    return jsonify({'error': 'Ошибка при группировке данных'}), 500
+                df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
+                    'max_drivers': 'mean',
+                    'total_orders': 'sum'
+                }).reset_index()
+                df['Период'] = df['date'].dt.month.apply(lambda x: months_ru[x - 1]) + ' ' + df['date'].dt.year.astype(
+                    str)
+                df_export = df[['Период', 'max_drivers', 'total_orders']].rename(columns={
+                    'max_drivers': 'Среднее количество водителей',
+                    'total_orders': 'Всего заказов'
+                })
+                df_export['Организация'] = org
+                df_export = df_export[['Период', 'Организация', 'Среднее количество водителей', 'Всего заказов']]
+                df_export['Среднее количество водителей'] = df_export['Среднее количество водителей'].round(1)
             else:
                 # Дневные данные
                 df_export = df.rename(columns={
@@ -180,29 +198,26 @@ def export_data():
                     'max_drivers': 'Максимальное количество водителей',
                     'total_orders': 'Всего заказов'
                 })
-                df_export['Дата'] = df_export['Дата'].dt.strftime('%Y-%m-%d')
+                df_export['Дата'] = df_export['Дата'].dt.strftime('%d.%m.%Y')
 
-            # Создаем Excel файл
+            # Создаем Excel файл с явным указанием параметров
             output = BytesIO()
-            try:
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_export.to_excel(writer, sheet_name='Данные', index=False)
-            except Exception as e:
-                app.logger.error(f"Ошибка создания Excel: {str(e)}")
-                return jsonify({'error': 'Ошибка создания файла'}), 500
+            with pd.ExcelWriter(
+                    output,
+                    engine='openpyxl',
+                    mode='w'
+            ) as writer:
+                df_export.to_excel(writer, sheet_name='Данные', index=False)
 
             output.seek(0)
 
             # Формируем имя файла
-            filename = f"export_{date_from}_{date_to}.xlsx"
+            filename = sanitize_filename(f"export_{org}_{date_from}_{date_to}.xlsx")
 
             # Отправляем файл
             response = make_response(output.getvalue())
-            response.headers['Content-Type'] = \
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            response.headers['Content-Disposition'] = \
-                f'attachment; filename="{filename}"'
-
+            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
 
     except Exception as e:

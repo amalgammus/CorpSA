@@ -4,22 +4,28 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Организация *</label>
-                    <select id="organization" class="form-select" required>
-                        <option value="" selected disabled>Выберите организацию</option>
+                    <select id="organization" class="form-select enhanced-select" required>
+                        <option value="" selected disabled>Выберите или начните вводить...</option>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Дата с *</label>
-                    <input type="text" class="form-control datepicker" id="dateFrom" placeholder="Выберите дату" required>
+                    <input type="text" class="form-control datepicker" id="dateFrom" placeholder="Выберите дату" required autocomplete="off">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Дата по *</label>
-                    <input type="text" class="form-control datepicker" id="dateTo" placeholder="Выберите дату" required>
+                    <input type="text" class="form-control datepicker" id="dateTo" placeholder="Выберите дату" required autocomplete="off">
                 </div>
                 <div class="col-md-12">
-                    <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" id="monthly">
-                        <label class="form-check-label">Группировать по месяцам</label>
+                    <div class="form-check form-switch mt-2 d-flex align-items-center gap-3">
+                        <div class="d-flex align-items-center">
+                            <input class="form-check-input" type="checkbox" id="monthly">
+                            <label class="form-check-label ms-2" for="monthly">Группировать по месяцам</label>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <input class="form-check-input" type="checkbox" id="toggleCorpFilter" checked>
+                            <label class="form-check-label ms-2" for="toggleCorpFilter">Фильтр организаций (по corp.txt)</label>
+                        </div>
                     </div>
                 </div>
                 <div class="col-md-12 mt-3">
