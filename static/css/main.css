@@ -31,17 +31,34 @@ body {
     font-weight: 500;
 }
 
-#exportBtn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+.filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
 }
 
-#exportBtn i {
-    font-size: 1.2em;
-    margin-right: 8px;
+#applyBtn {
+    min-width: 150px;
+}
+
+#exportBtn {
+    min-width: 180px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .bi-file-excel {
-    margin-right: 5px;
+    font-size: 1.1em;
+}
+
+#applyBtn, #exportBtn {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+#applyBtn:hover, #exportBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
