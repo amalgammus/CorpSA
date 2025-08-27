@@ -1,3 +1,61 @@
+/* ===== Card Styles ===== */
+.filter-card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: none;
+    margin-bottom: 1.5rem;
+}
+
+.filter-card .card-body {
+    padding: 1.5rem;
+}
+
+/* ===== Empty State Styles ===== */
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #6c757d;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    margin: 2rem 0;
+}
+
+.empty-state .bi {
+    font-size: 4rem;
+    color: #dee2e6;
+    margin-bottom: 1.5rem;
+    display: block;
+}
+
+.empty-state h4 {
+    color: #495057;
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+.empty-state p {
+    color: #6c757d;
+    font-size: 1.1rem;
+    margin-bottom: 0;
+}
+
+/* ===== Logout Button ===== */
+#logoutBtn {
+    min-width: auto;
+    white-space: nowrap;
+}
+
+#logoutBtn .bi {
+    margin-right: 0.5rem;
+}
+
+/* ===== Table/Chart Toggle Buttons ===== */
+.btn-group .btn .bi {
+    margin-right: 0.5rem;
+}
+
 /* ===== Table Styles ===== */
 #dataTable td:nth-child(3),
 #dataTable td:nth-child(4) {
@@ -160,6 +218,28 @@ body.has-data #dataContainers {
 
 /* ===== Responsive Adjustments ===== */
 @media (max-width: 768px) {
+  .filter-card .card-body {
+    padding: 1.25rem;
+  }
+
+  .empty-state {
+    padding: 2rem 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .empty-state .bi {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  .empty-state h4 {
+    font-size: 1.25rem;
+  }
+
+  .empty-state p {
+    font-size: 1rem;
+  }
+
   #driversChart,
   #ordersChart {
     height: 250px !important;
@@ -173,5 +253,25 @@ body.has-data #dataContainers {
 
   .js-plotly-plot .plotly .modebar {
     display: none;
+  }
+
+  .d-flex.justify-content-between {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  #logoutBtn {
+    align-self: flex-end;
+  }
+
+  .btn-group .btn {
+    min-width: 110px;
+    font-size: 0.9rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .btn-group .btn .bi {
+    margin-right: 0.3rem;
+    font-size: 0.9rem;
   }
 }

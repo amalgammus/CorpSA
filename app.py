@@ -1,15 +1,27 @@
 import re
 from contextlib import contextmanager
 from io import BytesIO
+from functools import wraps
 
 import pandas as pd
 import psycopg2
 from dateutil.parser import parse
-from flask import Flask, render_template, jsonify, request, make_response
+from flask import Flask, render_template, jsonify, request, make_response, session, redirect, url_for
 
 from config import config
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.secret_key = config.SECRET_KEY
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 @contextmanager
@@ -69,12 +81,36 @@ def sanitize_filename(filename):
         return "exported_data.xlsx"
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        if username == config.AUTH_USERNAME and password == config.AUTH_PASSWORD:
+            session['logged_in'] = True
+            session.permanent = True  # Сессия будет постоянной
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', error='Неверные учетные данные')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def dashboard():
     return render_template('dashboard.html')
 
 
 @app.route('/api/organizations')
+@login_required
 def get_organizations():
     try:
         filter_corp = request.args.get('filter_corp', 'true') == 'true'
@@ -96,6 +132,7 @@ def get_organizations():
 
 
 @app.route('/api/data')
+@login_required
 def get_data():
     try:
         # Получаем параметры из request
@@ -159,6 +196,7 @@ def get_data():
 
 
 @app.route('/api/export')
+@login_required
 def export_data():
     try:
         # Получаем параметры

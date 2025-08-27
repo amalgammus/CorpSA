@@ -11,6 +11,11 @@ class Config:
     DB_PASSWORD = os.getenv('DB_PASSWORD', 'admin')
     DB_PORT = os.getenv('DB_PORT', '5432')
 
+    # Настройки авторизации
+    AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'admin')
+    AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', 'password')
+    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
+
     @property
     def db_config(self):
         return {

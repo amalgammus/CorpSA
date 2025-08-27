@@ -25,6 +25,13 @@ $(document).ready(function() {
             maxDate: "today"
         });
 
+        // Кнопка выхода
+        $("#logoutBtn").click(function() {
+            if (confirm("Вы уверены, что хотите выйти?")) {
+                window.location.href = "/logout";
+            }
+        });
+
         // Переключатель представлений
         $("#tableViewBtn").click(function(e) {
             e.preventDefault();
