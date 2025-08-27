@@ -5,14 +5,12 @@ $(document).ready(function() {
         allOrganizations: [],
         currentData: null,
         currentView: 'table',
-        isLoading: false,
-        plotlyLoaded: false
+        isLoading: false
     };
 
     // Инициализация
     function init() {
         initControls();
-        initPlotly();
         loadOrganizations();
         showEmptyState();
     }
@@ -86,24 +84,6 @@ $(document).ready(function() {
         });
     }
 
-    // Инициализация Plotly
-    function initPlotly() {
-        if (typeof Plotly === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.plot.ly/plotly-2.24.1.min.js';
-            script.onload = function() {
-                appState.plotlyLoaded = true;
-            };
-            script.onerror = function() {
-                console.error("Не удалось загрузить Plotly");
-                $("#chartViewBtn").prop('disabled', true);
-            };
-            document.head.appendChild(script);
-        } else {
-            appState.plotlyLoaded = true;
-        }
-    }
-
     // Переключение представлений
     function switchView(view) {
         if (!appState.currentData) {
@@ -150,7 +130,6 @@ $(document).ready(function() {
                 appState.currentData = data;
                 if (data && data.length > 0) {
                     showData();
-                    updateCurrentView();
                 } else {
                     showAlert("Нет данных для отображения", "warning");
                     showEmptyState();
@@ -188,16 +167,6 @@ $(document).ready(function() {
         }
     }
 
-    // Переключение представлений
-    function switchView(view) {
-        if (!appState.currentData) return;
-
-        appState.currentView = view;
-        $("#tableViewBtn").toggleClass("active", view === 'table');
-        $("#chartViewBtn").toggleClass("active", view === 'chart');
-        updateCurrentView();
-    }
-
     // Пустое состояние
     function showEmptyState() {
         appState.currentData = null;
@@ -209,21 +178,6 @@ $(document).ready(function() {
         if (typeof Plotly !== 'undefined') {
             Plotly.purge('driversChart');
             Plotly.purge('ordersChart');
-        }
-    }
-
-    // Показать/скрыть индикатор загрузки
-    function showLoading(show) {
-        if (show) {
-            $("body").append(`
-                <div class="loading-indicator">
-                    <div class="spinner-border loading-spinner text-primary" role="status">
-                        <span class="visually-hidden">Загрузка...</span>
-                    </div>
-                </div>
-            `);
-        } else {
-            $(".loading-indicator").remove();
         }
     }
 
@@ -339,7 +293,7 @@ $(document).ready(function() {
 
     // Функция отрисовки графиков
     function renderCharts(data) {
-        if (!appState.plotlyLoaded) {
+        if (typeof Plotly === 'undefined') {
             showAlert("Библиотека графиков не загрузилась", "warning");
             switchView('table');
             return;

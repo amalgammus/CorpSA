@@ -5,4 +5,3 @@ python-dotenv
 plotly
 python-dateutil
 openpyxl
-xlsxwriter
