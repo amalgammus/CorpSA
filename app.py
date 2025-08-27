@@ -27,7 +27,6 @@ def db_connection():
 
 
 CORP_FILTER_PATH = 'corp.txt'
-corp_filter_enabled = True
 
 
 def read_corp_filter():
@@ -94,13 +93,6 @@ def get_organizations():
     except Exception as e:
         app.logger.error(f"Ошибка при получении организаций: {e}")
         return jsonify([])
-
-
-@app.route('/api/toggle-corp-filter', methods=['POST'])
-def toggle_corp_filter():
-    global corp_filter_enabled
-    corp_filter_enabled = not corp_filter_enabled
-    return jsonify({'status': 'success', 'filter_enabled': corp_filter_enabled})
 
 
 @app.route('/api/data')
