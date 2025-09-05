@@ -1,8 +1,9 @@
 import re
+import logging
 from contextlib import contextmanager
 from io import BytesIO
 from functools import wraps
-
+from werkzeug.utils import secure_filename
 import pandas as pd
 import psycopg2
 from dateutil.parser import parse
@@ -10,8 +11,27 @@ from flask import Flask, render_template, jsonify, request, make_response, sessi
 
 from config import config
 
+logging.basicConfig(
+    level=logging.INFO if not config.DEBUG else logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
+
+
+@app.after_request
+def add_security_headers(response):
+    if not config.DEBUG:
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
 
 
 def login_required(f):
@@ -46,38 +66,30 @@ def read_corp_filter():
         with open(CORP_FILTER_PATH, 'r') as f:
             return [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
+        logger.warning("Corp filter file not found")
+        return []
+    except Exception as e:
+        logger.error(f"Error reading corp filter: {e}")
         return []
 
 
 def sanitize_filename(filename):
-    """Очищает имя файла от недопустимых символов"""
     try:
-        # Транслитерация русских символов
         translit_map = {
             'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
             'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
             'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
             'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '',
             'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
-            'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'E',
-            'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
-            'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
-            'Ф': 'F', 'Х': 'H', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
-            'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
         }
-
-        filename = ''.join([translit_map.get(c, c) for c in filename])
-
-        # Удаление недопустимых символов
-        filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+        filename = ''.join([translit_map.get(c.lower(), c) for c in filename])
+        # Удалим кавычки и другие запрещенные
+        filename = re.sub(r'[\\/*?:"<>|\'`]', '', filename)
         filename = re.sub(r'[^\w\-_. ]', '', filename)
         filename = filename.replace(" ", "_")
-
-        # Ограничение длины
         return filename[:100]
-
-    except (TypeError, AttributeError) as e:
-        app.logger.warning(f"Filename sanitization warning: {e}")
+    except Exception as e:
+        logger.warning(f"Filename sanitization warning: {e}")
         return "exported_data.xlsx"
 
 
@@ -89,9 +101,11 @@ def login():
 
         if username == config.AUTH_USERNAME and password == config.AUTH_PASSWORD:
             session['logged_in'] = True
-            session.permanent = True  # Сессия будет постоянной
+            session.permanent = True
+            logger.info(f"Successful login from {request.remote_addr}")
             return redirect(url_for('dashboard'))
         else:
+            logger.warning(f"Failed login attempt from {request.remote_addr}")
             return render_template('login.html', error='Неверные учетные данные')
 
     return render_template('login.html')
@@ -127,24 +141,21 @@ def get_organizations():
 
                 return jsonify(organizations)
     except Exception as e:
-        app.logger.error(f"Ошибка при получении организаций: {e}")
-        return jsonify([])
+        logger.error(f"Ошибка при получении организаций: {e}")
+        return jsonify({'error': 'Внутренняя ошибка сервера'}), 500
 
 
 @app.route('/api/data')
 @login_required
 def get_data():
     try:
-        # Получаем параметры из request
         org = request.args.get('organization', '')
         date_from = request.args.get('date_from', '')
         date_to = request.args.get('date_to', '')
         monthly = request.args.get('monthly', 'false') == 'true'
 
-        # Проверка обязательных параметров
         if not org:
             return jsonify({'error': 'Не выбрана организация'}), 400
-
         if not date_from or not date_to:
             return jsonify({'error': 'Не выбран период'}), 400
 
@@ -167,23 +178,19 @@ def get_data():
                 df['date'] = pd.to_datetime(df['date'])
                 grouped = df.groupby(pd.Grouper(key='date', freq='ME'))
 
-                # Рассчитываем среднее и проверяем на целое число
                 def safe_mean(x):
                     avg = x.mean()
                     return int(avg) if avg.is_integer() else round(avg, 1)
 
                 df = grouped.agg({
-                    'max_drivers': safe_mean,  # Используем нашу функцию
+                    'max_drivers': safe_mean,
                     'total_orders': 'sum'
                 }).reset_index()
                 df['organization'] = org
 
-                # Русские названия месяцев с заглавной буквы
                 months_ru = {
-                    1: 'Январь', 2: 'Февраль', 3: 'Март',
-                    4: 'Апрель', 5: 'Май', 6: 'Июнь',
-                    7: 'Июль', 8: 'Август', 9: 'Сентябрь',
-                    10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
+                    1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель', 5: 'Май', 6: 'Июнь',
+                    7: 'Июль', 8: 'Август', 9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
                 }
                 df['month_name'] = df['date'].dt.month.map(months_ru) + ' ' + df['date'].dt.year.astype(str)
                 data = df.to_dict('records')
@@ -191,15 +198,14 @@ def get_data():
             return jsonify(data)
 
     except Exception as e:
-        app.logger.error(f"Ошибка при получении данных: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Ошибка при получении данных: {e}")
+        return jsonify({'error': 'Внутренняя ошибка сервера'}), 500
 
 
 @app.route('/api/export')
 @login_required
 def export_data():
     try:
-        # Получаем параметры
         org = request.args.get('organization', '')
         date_from = request.args.get('date_from', '')
         date_to = request.args.get('date_to', '')
@@ -209,7 +215,6 @@ def export_data():
             return jsonify({'error': 'Необходимые параметры не указаны'}), 400
 
         with db_connection() as conn:
-            # Базовый запрос
             query = """
                 SELECT date, organization, max_drivers, total_orders 
                 FROM organization_daily_stats
@@ -224,7 +229,7 @@ def export_data():
                     columns = [desc[0] for desc in cur.description]
                     data = [dict(zip(columns, row)) for row in cur.fetchall()]
             except psycopg2.Error as db_error:
-                app.logger.error(f"Database error during export: {db_error}")
+                logger.error(f"Database error during export: {db_error}")
                 return jsonify({'error': 'Ошибка базы данных'}), 500
 
             if not data:
@@ -233,16 +238,14 @@ def export_data():
             try:
                 df = pd.DataFrame(data)
                 df['date'] = pd.to_datetime(df['date'])
-            except (ValueError, KeyError) as df_error:
-                app.logger.error(f"Data processing error: {df_error}")
+            except Exception as df_error:
+                logger.error(f"Data processing error: {df_error}")
                 return jsonify({'error': 'Ошибка обработки данных'}), 500
 
-            # Создаем Excel файл в памяти
             output = BytesIO()
 
             try:
                 from openpyxl import Workbook
-                from openpyxl.utils.dataframe import dataframe_to_rows
                 from openpyxl.styles import Font, Alignment
 
                 wb = Workbook()
@@ -252,54 +255,39 @@ def export_data():
                 if monthly:
                     months_ru = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
                                  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
-                    try:
-                        df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
-                            'max_drivers': 'mean',
-                            'total_orders': 'sum'
-                        }).reset_index()
-                    except Exception as group_error:
-                        app.logger.error(f"Grouping error: {group_error}")
-                        return jsonify({'error': 'Ошибка группировки данных'}), 500
+                    df = df.groupby(pd.Grouper(key='date', freq='ME')).agg({
+                        'max_drivers': 'mean',
+                        'total_orders': 'sum'
+                    }).reset_index()
 
                     headers = ["Период", "Организация", "Среднее количество водителей", "Всего заказов"]
                     ws.append(headers)
 
                     for _, row in df.iterrows():
-                        try:
-                            month_name = months_ru[row['date'].month - 1] + ' ' + str(row['date'].year)
-                            ws.append([
-                                month_name,
-                                org,
-                                round(float(row['max_drivers']), 1),
-                                int(row['total_orders'])
-                            ])
-                        except (ValueError, IndexError) as row_error:
-                            app.logger.error(f"Row processing error: {row_error}")
-                            continue
-
+                        month_name = months_ru[row['date'].month - 1] + ' ' + str(row['date'].year)
+                        ws.append([
+                            month_name,
+                            org,
+                            round(float(row['max_drivers']), 1),
+                            int(row['total_orders'])
+                        ])
                 else:
                     headers = ["Дата", "Организация", "Максимальное количество водителей", "Всего заказов"]
                     ws.append(headers)
 
                     for _, row in df.iterrows():
-                        try:
-                            ws.append([
-                                row['date'].strftime('%d.%m.%Y'),
-                                row['organization'],
-                                float(row['max_drivers']),
-                                int(row['total_orders'])
-                            ])
-                        except (ValueError, KeyError) as row_error:
-                            app.logger.error(f"Row processing error: {row_error}")
-                            continue
+                        ws.append([
+                            row['date'].strftime('%d.%m.%Y'),
+                            row['organization'],
+                            float(row['max_drivers']),
+                            int(row['total_orders'])
+                        ])
 
-                # Форматирование
                 bold_font = Font(bold=True)
                 for cell in ws[1]:
                     cell.font = bold_font
                     cell.alignment = Alignment(horizontal='center')
 
-                # Автоподбор ширины колонок
                 for column in ws.columns:
                     max_length = 0
                     column_letter = column[0].column_letter
@@ -308,8 +296,7 @@ def export_data():
                             cell_value = str(cell.value) if cell.value is not None else ""
                             if len(cell_value) > max_length:
                                 max_length = len(cell_value)
-                        except Exception as cell_error:
-                            app.logger.debug(f"Cell processing warning: {cell_error}")
+                        except:
                             continue
                     adjusted_width = (max_length + 2) * 1.2
                     ws.column_dimensions[column_letter].width = adjusted_width
@@ -318,23 +305,22 @@ def export_data():
                 output.seek(0)
 
             except Exception as excel_error:
-                app.logger.error(f"Excel generation error: {excel_error}")
+                logger.error(f"Excel generation error: {excel_error}")
                 return jsonify({'error': 'Ошибка создания Excel файла'}), 500
 
-            try:
-                filename = sanitize_filename(f"export_{org}_{date_from}_{date_to}.xlsx")
-                response = make_response(output.getvalue())
-                response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-                return response
-            except Exception as response_error:
-                app.logger.error(f"Response creation error: {response_error}")
-                return jsonify({'error': 'Ошибка формирования ответа'}), 500
+            filename = sanitize_filename(f"export_{org}_{date_from}_{date_to}.xlsx")
+            filename = secure_filename(filename)
+            response = make_response(output.getvalue())
+            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
 
     except Exception as e:
-        app.logger.error(f"Unexpected export error: {e}", exc_info=True)
+        logger.error(f"Unexpected export error: {e}", exc_info=True)
         return jsonify({'error': 'Неожиданная ошибка при экспорте'}), 500
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    logger.info(f"Starting application in {'DEBUG' if config.DEBUG else 'PRODUCTION'} mode")
+    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+
